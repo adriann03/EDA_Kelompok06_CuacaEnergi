@@ -88,8 +88,8 @@
         }
         
         .executive-summary {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
+            background: linear-gradient(135deg, #f4a3fd 0%, #ff7688 100%);
+            color: rgb(0, 0, 0);
             padding: 25px;
             margin: 20px;
             border-radius: 10px;
@@ -363,6 +363,12 @@
             color: #1e3c72;
             font-size: 1.5em;
         }
+        .copyright {
+            text-align: center;
+            margin: 20px;
+            font-size: 0.9em;
+            color: #000;
+        }
     </style>
 </head>
 <body>
@@ -374,7 +380,8 @@
     <div class="dashboard-container">
         <div class="header">
             <h1>Dashboard Analisis Cuaca vs Beban Listrik</h1>
-            <p>Analisis Pengaruh Suhu, Kelembaban, dan Curah Hujan terhadap Beban Puncak Energi</p>
+            <p>Analisis Pengaruh Suhu, Kelembaban, dan Curah Hujan terhadap Beban Puncak Energi</p><br>
+            <p>EDA Kelompok 06</p>
         </div>
 
         <div class="error-message" id="errorMessage"></div>
@@ -567,6 +574,7 @@
                 <div class="chart-wrapper tall" id="calendarHeatmapFiltered"></div>
             </div>
         </div>
+        © 2025 EDA Kelompok 06
     </div>
 
     <script>
