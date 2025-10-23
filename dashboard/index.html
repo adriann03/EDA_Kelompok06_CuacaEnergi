@@ -1,0 +1,2104 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Cuaca & Beban Listrik</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            /* font-family: Verdana, Tahoma, Geneva, Verdana, sans-serif; */
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            color: #333;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+            font-family: Verdana, Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .dashboard-container {
+            max-width: 1800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: white;
+            font-size: 1.5em;
+        }
+        
+        .loading-overlay.hidden {
+            display: none;
+        }
+        
+        .spinner {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-right: 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .executive-summary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 25px;
+            margin: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .executive-summary h2 {
+            margin-bottom: 15px;
+            font-size: 1.8em;
+        }
+        
+        .kpi-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        
+        .kpi-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            border-left: 4px solid #667eea;
+            transition: transform 0.3s;
+        }
+        
+        .kpi-card:hover {
+            transform: translateY(-5px);
+            border-left: 4px solid #47afff;
+            color: #47afff;
+        }
+        
+        .kpi-card h3 {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        
+        .kpi-card .value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        
+        .kpi-card .change {
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .change.positive {
+            color: #10b981;
+        }
+        
+        .change.negative {
+            color: #ef4444;
+        }
+        
+        .filters-panel {
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            margin: 20px;
+            border-radius: 10px;
+        }
+        
+        .filters-panel h3 {
+            margin-bottom: 15px;
+        }
+        
+        .filter-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .filter-item {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .filter-item label {
+            margin-bottom: 5px;
+            font-size: 0.9em;
+        }
+        
+        .filter-item input,
+        .filter-item select {
+            padding: 8px;
+            border-radius: 5px;
+            border: none;
+            background: white;
+            color: #333;
+        }
+        
+        .filter-results {
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            border: 3px solid #10b981;
+            padding: 25px;
+            margin: 20px;
+            border-radius: 10px;
+            display: none;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);
+        }
+        
+        .filter-results.active {
+            display: block;
+            animation: slideIn 0.5s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .filter-results h3 {
+            color: #065f46;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+        
+        .filter-results #filterSummary {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #10b981;
+            font-size: 1.1em;
+        }
+        
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .summary-table th,
+        .summary-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        .summary-table th {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            font-weight: 600;
+            font-size: 1.05em;
+        }
+        
+        .summary-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .summary-table tbody tr:hover {
+            background: #f0fdf4;
+            transition: background 0.3s;
+        }
+        
+        .summary-table td {
+            font-size: 1em;
+        }
+        
+        .summary-table td:first-child {
+            font-weight: 600;
+            color: #1f2937;
+        }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            padding: 20px;
+        }
+        
+        .chart-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        }
+        
+        .chart-container.full-width {
+            grid-column: 1 / -1;
+        }
+        
+        .chart-container h3 {
+            margin-bottom: 15px;
+            color: #2c3e50;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+            width: 100%;
+            min-height: 300px;
+        }
+        
+        .chart-wrapper.tall {
+            height: 500px;
+        }
+        
+        @media (max-width: 768px) {
+            .chart-wrapper {
+                height: 300px;
+            }
+            
+            .chart-wrapper.tall {
+                height: 400px;
+            }
+        }
+        
+        #calendarHeatmap, #calendarHeatmapFiltered {
+            overflow-x: auto;
+        }
+        
+        .btn-apply {
+            background: #667eea;
+            color: white;
+            padding: 10px 25px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            margin-top: 15px;
+            transition: background 0.3s;
+        }
+        
+        .btn-apply:hover {
+            background: #5568d3;
+        }
+
+        .error-message {
+            background: #ef4444;
+            color: white;
+            padding: 20px;
+            margin: 20px;
+            border-radius: 10px;
+            display: none;
+        }
+        
+        .section-divider {
+            background: #e5e7eb;
+            height: 3px;
+            margin: 30px 20px;
+        }
+        
+        .section-header {
+            background: #f3f4f6;
+            padding: 15px 20px;
+            margin: 20px 20px 0 20px;
+            border-radius: 10px 10px 0 0;
+            border-left: 5px solid #667eea;
+        }
+        
+        .section-header h2 {
+            color: #1e3c72;
+            font-size: 1.5em;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="spinner"></div>
+        <span>Loading data...</span>
+    </div>
+
+    <div class="dashboard-container">
+        <div class="header">
+            <h1>Dashboard Analisis Cuaca vs Beban Listrik</h1>
+            <p>Analisis Pengaruh Suhu, Kelembaban, dan Curah Hujan terhadap Beban Puncak Energi</p>
+        </div>
+
+        <div class="error-message" id="errorMessage"></div>
+        
+        <div class="executive-summary">
+            <h2>-= Executive Summary =-</h2>
+            <p id="summaryText">Loading data...</p>
+        </div>
+        
+        <div class="kpi-container">
+            <div class="kpi-card">
+                <h3>Beban Puncak Rata-rata</h3>
+                <div class="value" id="kpiBeban">-</div>
+                <div class="change" id="kpiBebanChange">-</div>
+            </div>
+            <div class="kpi-card">
+                <h3>Suhu Rata-rata</h3>
+                <div class="value" id="kpiSuhu">-</div>
+                <div class="change">-</div>
+            </div>
+            <div class="kpi-card">
+                <h3>Kelembaban Rata-rata</h3>
+                <div class="value" id="kpiHumidity">-</div>
+                <div class="change">-</div>
+            </div>
+            <div class="kpi-card">
+                <h3>Korelasi Suhu-Beban</h3>
+                <div class="value" id="kpiCorrelation">-</div>
+                <div class="change">-</div>
+            </div>
+            <div class="kpi-card">
+                <h3>Hari Beban Tertinggi</h3>
+                <div class="value" id="kpiMaxDay" style="font-size: 1.2em;">-</div>
+                <div class="change" id="kpiMaxCondition">-</div>
+            </div>
+        </div>
+        
+        <div class="filters-panel">
+            <h3>Filters</h3>
+            <div class="filter-group">
+                <div class="filter-item">
+                    <label>Tanggal Mulai:</label>
+                    <input type="date" id="dateStart">
+                </div>
+                <div class="filter-item">
+                    <label>Tanggal Akhir:</label>
+                    <input type="date" id="dateEnd">
+                </div>
+                <div class="filter-item">
+                    <label>Rentang Suhu (°C):</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="number" id="tempMin" placeholder="Min" style="width: 100px;">
+                        <span style="color: white;">-</span>
+                        <input type="number" id="tempMax" placeholder="Max" style="width: 100px;">
+                    </div>
+                </div>
+                <div class="filter-item">
+                    <label>Kondisi Cuaca:</label>
+                    <select id="weatherCondition">
+                        <option value="all">Semua</option>
+                        <option value="rain">Hujan</option>
+                        <option value="clear">Cerah</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn-apply" onclick="applyFilters()">Terapkan Filter</button>
+            <button class="btn-apply" onclick="resetFilters()" style="background: #6b7280; margin-left: 10px;">Reset Filter</button>
+        </div>
+        
+        <div class="filter-results" id="filterResults">
+            <h3>Hasil Filter</h3>
+            <p id="filterSummary">-</p>
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th>Metrik</th>
+                        <th>Data Asli</th>
+                        <th>Data Terfilter</th>
+                        <th>Perubahan</th>
+                    </tr>
+                </thead>
+                <tbody id="comparisonTableBody">
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="section-header">
+            <h2>Grafik Data Asli (Semua Data)</h2>
+        </div>
+        
+        <div class="charts-grid" id="originalCharts">
+            <div class="chart-container full-width">
+                <h3>1. Stacked Area: Beban per Sumber Energi</h3>
+                *gunakan filter untuk mengatur rentang tanggal
+                <div class="chart-wrapper tall">
+                    <canvas id="stackedAreaChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container full-width">
+                <h3>2. Scatter Bubble: Suhu vs Beban (Bubble = Kelembaban)</h3>
+                <div class="chart-wrapper" id="bubbleChart"></div>
+            </div>
+            
+            <div class="chart-container full-width">
+                <h3>3. Time Series: Cuaca vs Beban</h3>
+                <div class="chart-wrapper tall">
+                    <canvas id="timeSeriesChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <h3>4. Heatmap: Beban by Kondisi Cuaca</h3>
+                <div class="chart-wrapper">
+                    <canvas id="heatmapChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <h3>5. Correlation Matrix</h3>
+                <div class="chart-wrapper">
+                    <canvas id="correlationMatrix"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <h3>6. Radial Chart: Beban Puncak per Jam</h3>
+                <div class="chart-wrapper">
+                    <canvas id="radialChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container full-width">
+                <h3>7. Calendar Heatmap: Daily Peak Load Pattern</h3>
+                <div class="chart-wrapper tall" id="calendarHeatmap"></div>
+            </div>
+        </div>
+        
+        <div class="section-divider" id="filterDivider" style="display: none;"></div>
+        
+        <div class="section-header" id="filteredHeader" style="display: none;">
+            <h2>Grafik Hasil Filter</h2>
+        </div>
+        
+        <div class="charts-grid" id="filteredCharts" style="display: none;">
+            <div class="chart-container full-width">
+                <h3>1. Stacked Area: Beban per Sumber Energi (Filtered)</h3>
+                Start Date: <input type="date" id="dateStartSA">
+                End Date: <input type="date" id="dateEndSA">
+                <div class="chart-wrapper tall">
+                    <canvas id="stackedAreaChartFiltered"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container full-width">
+                <h3>2. Scatter Bubble: Suhu vs Beban (Filtered)</h3>
+                <div class="chart-wrapper" id="bubbleChartFiltered"></div>
+            </div>
+            
+            <div class="chart-container full-width">
+                <h3>3. Time Series: Cuaca vs Beban (Filtered)</h3>
+                <div class="chart-wrapper tall">
+                    <canvas id="timeSeriesChartFiltered"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <h3>4. Heatmap: Beban by Kondisi Cuaca (Filtered)</h3>
+                <div class="chart-wrapper">
+                    <canvas id="heatmapChartFiltered"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <h3>5. Correlation Matrix (Filtered)</h3>
+                <div class="chart-wrapper">
+                    <canvas id="correlationMatrixFiltered"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <h3>6. Radial Chart: Beban Puncak per Jam (Filtered)</h3>
+                <div class="chart-wrapper">
+                    <canvas id="radialChartFiltered"></canvas>
+                </div>
+            </div>
+            
+            <div class="chart-container full-width">
+                <h3>7. Calendar Heatmap: Daily Peak Load Pattern (Filtered)</h3>
+                <div class="chart-wrapper tall" id="calendarHeatmapFiltered"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let mainData = [];
+        let stackedData = [];
+        let filteredData = [];
+        let originalStats = {};
+        let charts = {};
+        let isFiltered = false;
+
+        window.addEventListener('DOMContentLoaded', function() {
+            loadData();
+        });
+
+        function updateAllTextContentById(id, textContent) {
+
+        }
+        function loadData() {
+            const mainDataPath = '../data/processed/energy_weather_wide_final.csv';
+            const stackedDataPath = '../data/processed/energy_generation_long_melted.csv';
+            
+            Papa.parse(mainDataPath, {
+                download: true,
+                header: true,
+                skipEmptyLines: true,
+                complete: function(results) {
+                    mainData = results.data.filter(row => row.Beban_Puncak_Aktual && String(row.Beban_Puncak_Aktual).trim() !== '');
+                    console.log(mainData)
+                    Papa.parse(stackedDataPath, {
+                        download: true,
+                        header: true,
+                        skipEmptyLines: true,
+                        complete: function(results2) {
+                            stackedData = results2.data.filter(row => row.Sumber_Energi && String(row.Sumber_Energi).trim() !== '');
+                            // Preprocess numeric fields once
+                            preprocessData();
+                            filteredData = mainData.slice();
+                            
+                            document.getElementById('loadingOverlay').classList.add('hidden');
+                            initializeDashboard();
+                        },
+                        error: function(error) {
+                            showError('Error loading stacked data: ' + error.message);
+                        }
+                    });
+                },
+                error: function(error) {
+                    showError('Error loading main data: ' + error.message);
+                }
+            });
+        }
+
+        function showError(message) {
+            console.error(message); // Add console logging
+            document.getElementById('loadingOverlay').classList.add('hidden');
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            
+            // Scroll to error message
+            errorDiv.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function initializeDashboard() {
+            filteredData = mainData.slice();
+            calculateOriginalStats();
+            updateKPIs();
+            updateSummary();
+
+            document.getElementById('dateStartSA').value = new Date(stackedData[0].Waktu_UTC).toISOString().split('T')[0]
+            document.getElementById('dateEndSA').value = new Date(stackedData[125].Waktu_UTC).toISOString().split('T')[0]
+            console.log(stackedData, "hello")
+            console.log("joajs")
+
+            createStackedAreaChart();
+            createBubbleChart();
+            createTimeSeriesChart();
+            createHeatmap();
+            createCorrelationMatrix();
+            createRadialChart();
+            createCalendarHeatmap();
+            initializeDateFilters();
+        }
+        
+        function calculateOriginalStats() {
+            if (mainData.length === 0) return;
+            
+            originalStats = {
+                count: mainData.length,
+                bebanAvg: d3.mean(mainData, d => parseFloat(d.Beban_Puncak_Aktual)),
+                bebanMax: d3.max(mainData, d => parseFloat(d.Beban_Puncak_Aktual)),
+                bebanMin: d3.min(mainData, d => parseFloat(d.Beban_Puncak_Aktual)),
+                suhuAvg: d3.mean(mainData, d => parseFloat(d.temp)),
+                humidityAvg: d3.mean(mainData, d => parseFloat(d.humidity)),
+                correlation: calculateCorrelation(
+                    mainData.map(d => parseFloat(d.temp)),
+                    mainData.map(d => parseFloat(d.Beban_Puncak_Aktual))
+                )
+            };
+        }
+        // document.getElementById('dateStartSA').value = new Date(stackedData[0].Waktu_UTC).toISOString().split('T')[0]
+        // document.getElementById('dateEndSA').value = new Date(stackedData[125].Waktu_UTC).toISOString().split('T')[0]
+        // console.log(stackedData, "hello")
+        // console.log("joajs")
+        function initializeDateFilters() {
+            if (mainData.length === 0) return;
+            
+            const dates = mainData.map(d => new Date(d.Waktu_UTC)).filter(d => !isNaN(d));
+            if (dates.length === 0) return;
+            
+            const minDate = new Date(Math.min.apply(null, dates));
+            const maxDate = new Date(Math.max.apply(null, dates));
+            
+            document.getElementById('dateStart').value = minDate.toISOString().split('T')[0];
+            document.getElementById('dateEnd').value = maxDate.toISOString().split('T')[0];
+
+        }
+
+        function kelvinToCelsius(kelvin) {
+            const k = parseFloat(kelvin);
+            if (isNaN(k)) return NaN;
+            return Math.round((k - 273.15) * 10) / 10;
+        }
+
+        function preprocessData() {
+            // Process in smaller chunks to prevent UI freeze
+            const chunkSize = 1000;
+            let processed = 0;
+            
+            function processChunk() {
+                const end = Math.min(processed + chunkSize, mainData.length);
+                
+                for(let i = processed; i < end; i++) {
+                    const d = mainData[i];
+                    mainData[i] = {
+                        ...d,
+                        Beban_Puncak_Aktual: +d.Beban_Puncak_Aktual || 0,
+                        tempK: +d.temp || NaN,
+                        tempC: isNaN(+d.temp) ? NaN : Math.round((+d.temp - 273.15) * 10) / 10,
+                        humidity: +d.humidity || NaN,
+                        rain_1h: +(d.rain_1h || 0) || 0,
+                        Waktu_Date: new Date(d.Waktu_UTC)
+                    };
+                }
+                
+                processed = end;
+                
+                if (processed < mainData.length) {
+                    setTimeout(processChunk, 0);
+                } else {
+                    // Process stacked data after main data is done
+                    processStackedData();
+                }
+            }
+            
+            function processStackedData() {
+                stackedData = stackedData.map(d => ({
+                    ...d,
+                    Kapasitas_Generasi: +d.Kapasitas_Generasi || 0,
+                    Beban_Puncak_Aktual: +d.Beban_Puncak_Aktual || 0
+                }));
+            }
+            
+            processChunk();
+        }
+
+        function applyFilters() {
+            // Use preprocessed numeric fields and run heavy updates asynchronously to avoid freezing UI
+            document.getElementById('loadingOverlay').classList.remove('hidden');
+            filteredData = mainData.slice();
+
+            const startDate = document.getElementById('dateStart').value;
+            const endDate = document.getElementById('dateEnd').value;
+            if (startDate) {
+                const start = new Date(startDate);
+                filteredData = filteredData.filter(d => d.Waktu_Date && d.Waktu_Date >= start);
+            }
+            if (endDate) {
+                const end = new Date(endDate);
+                filteredData = filteredData.filter(d => d.Waktu_Date && d.Waktu_Date <= end);
+            }
+
+            const tempMin = parseFloat(document.getElementById('tempMin').value);
+            const tempMax = parseFloat(document.getElementById('tempMax').value);
+            if (!isNaN(tempMin) || !isNaN(tempMax)) {
+                filteredData = filteredData.filter(d => {
+                    const t = d.tempC;
+                    if (isNaN(t)) return false;
+                    const minOk = isNaN(tempMin) || t >= tempMin;
+                    const maxOk = isNaN(tempMax) || t <= tempMax;
+                    return minOk && maxOk;
+                });
+            }
+
+            const weatherCondition = document.getElementById('weatherCondition').value;
+            if (weatherCondition === 'rain') {
+                filteredData = filteredData.filter(d => (d.rain_1h || 0) > 0);
+            } else if (weatherCondition === 'clear') {
+                filteredData = filteredData.filter(d => (d.rain_1h || 0) === 0);
+            }
+
+            if (filteredData.length === 0) {
+                document.getElementById('loadingOverlay').classList.add('hidden');
+                let suggestion = 'Filter menghasilkan data kosong. Saran:\n';
+                if (startDate || endDate) suggestion += '- Perluas rentang tanggal.\n';
+                if (!isNaN(tempMin) || !isNaN(tempMax)) suggestion += '- Perluas rentang suhu.\n';
+                if (weatherCondition !== 'all') suggestion += '- Pilih "Semua" untuk kondisi cuaca.\n';
+                alert(suggestion);
+                filteredData = mainData.slice();
+                return;
+            }
+
+            // Run the expensive UI updates asynchronously so the browser stays responsive
+            setTimeout(() => {
+                isFiltered = true;
+                document.getElementById('filteredCharts').style.display = 'grid';
+                document.getElementById('originalCharts').style.display = 'none';
+                document.getElementById('filterResults').classList.add('active');
+                document.getElementById('filterDivider').style.display = 'block';
+                document.getElementById('filteredHeader').style.display = 'block';
+                document.getElementById('filterResults').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+                // Update table, KPIs and only filtered charts (don't re-render original charts unnecessarily)
+                updateComparisonTable();
+                updateKPIs();
+                updateSummary();
+
+                createStackedAreaChartFiltered();
+                createBubbleChartFiltered();
+                createTimeSeriesChartFiltered();
+                createHeatmapFiltered();
+                createCorrelationMatrixFiltered();
+                createRadialChartFiltered();
+                createCalendarHeatmapFiltered();
+
+                document.getElementById('loadingOverlay').classList.add('hidden');
+            }, 50);
+        }
+        
+        function resetFilters() {
+            document.getElementById('dateStart').value = '';
+            document.getElementById('dateEnd').value = '';
+            document.getElementById('tempMin').value = '';
+            document.getElementById('tempMax').value = '';
+            document.getElementById('weatherCondition').value = 'all';
+            
+            filteredData = mainData.slice();
+            isFiltered = false;
+            
+            document.getElementById('filteredCharts').style.display = 'none';
+            document.getElementById('originalCharts').style.display = '';
+            document.getElementById('filterResults').classList.remove('active');
+            document.getElementById('filterDivider').style.display = 'none';
+            document.getElementById('filteredHeader').style.display = 'none';
+            
+            initializeDateFilters();
+        }
+        
+        
+        function updateComparisonTable() {
+            const tbody = document.getElementById('comparisonTableBody');
+            tbody.innerHTML = '';
+            
+            console.log('Updating comparison table...');
+            console.log('Original stats:', originalStats);
+            
+            const filteredStats = {
+                count: filteredData.length,
+                bebanAvg: d3.mean(filteredData, d => parseFloat(d.Beban_Puncak_Aktual)),
+                bebanMax: d3.max(filteredData, d => parseFloat(d.Beban_Puncak_Aktual)),
+                bebanMin: d3.min(filteredData, d => parseFloat(d.Beban_Puncak_Aktual)),
+                suhuAvg: d3.mean(filteredData, d => parseFloat(d.temp)),
+                humidityAvg: d3.mean(filteredData, d => parseFloat(d.humidity)),
+                correlation: calculateCorrelation(
+                    filteredData.map(d => parseFloat(d.temp)),
+                    filteredData.map(d => parseFloat(d.Beban_Puncak_Aktual))
+                )
+            };
+            
+            console.log('Filtered stats:', filteredStats);
+            
+            const metrics = [
+                {
+                    label: 'Jumlah Data',
+                    original: originalStats.count,
+                    filtered: filteredStats.count,
+                    unit: ' record',
+                    decimals: 0
+                },
+                {
+                    label: 'Beban Rata-rata',
+                    original: originalStats.bebanAvg,
+                    filtered: filteredStats.bebanAvg,
+                    unit: ' MW',
+                    decimals: 2
+                },
+                {
+                    label: 'Beban Maksimum',
+                    original: originalStats.bebanMax,
+                    filtered: filteredStats.bebanMax,
+                    unit: ' MW',
+                    decimals: 2
+                },
+                {
+                    label: 'Beban Minimum',
+                    original: originalStats.bebanMin,
+                    filtered: filteredStats.bebanMin,
+                    unit: ' MW',
+                    decimals: 2
+                },
+                {
+                    label: 'Suhu Rata-rata',
+                    original: originalStats.suhuAvg - 273.15,
+                    filtered: filteredStats.suhuAvg - 273.15,
+                    unit: '°C',
+                    decimals: 2
+                },
+                {
+                    label: 'Kelembaban Rata-rata',
+                    original: originalStats.humidityAvg,
+                    filtered: filteredStats.humidityAvg,
+                    unit: '%',
+                    decimals: 2
+                },
+                {
+                    label: 'Korelasi Suhu-Beban',
+                    original: originalStats.correlation,
+                    filtered: filteredStats.correlation,
+                    unit: '',
+                    decimals: 3
+                }
+            ];
+            
+            metrics.forEach(metric => {
+                const row = tbody.insertRow();
+                const change = metric.original !== 0 ? ((metric.filtered - metric.original) / metric.original * 100).toFixed(1) : '0.0';
+                const changeClass = parseFloat(change) > 0 ? 'positive' : parseFloat(change) < 0 ? 'negative' : '';
+                const changeSign = parseFloat(change) > 0 ? '+' : '';
+                
+                row.innerHTML = `
+                    <td><strong>${metric.label}</strong></td>
+                    <td>${metric.original.toFixed(metric.decimals)}${metric.unit}</td>
+                    <td><strong>${metric.filtered.toFixed(metric.decimals)}${metric.unit}</strong></td>
+                    <td class="change ${changeClass}"><strong>${changeSign}${change}%</strong></td>
+                `;
+            });
+            
+            const summary = `Menampilkan <strong>${filteredStats.count.toLocaleString()}</strong> dari ${originalStats.count.toLocaleString()} record data 
+                            (<strong>${(filteredStats.count / originalStats.count * 100).toFixed(1)}%</strong> dari total data).`;
+            document.getElementById('filterSummary').innerHTML = summary;
+            
+            console.log('Comparison table updated successfully');
+        }
+
+        function updateKPIs() {
+            if (filteredData.length === 0) return;
+            
+            const bebanAvg = d3.mean(filteredData, d => parseFloat(d.Beban_Puncak_Aktual));
+            const suhuAvg = d3.mean(filteredData, d => parseFloat(kelvinToCelsius(d.temp)));
+            const humidityAvg = d3.mean(filteredData, d => parseFloat(d.humidity));
+            
+            const correlation = calculateCorrelation(
+                filteredData.map(d => parseFloat(kelvinToCelsius(d.temp))),
+                filteredData.map(d => parseFloat(d.Beban_Puncak_Aktual))
+            );
+            
+            const maxEntry = filteredData.reduce((max, d) => 
+                parseFloat(d.Beban_Puncak_Aktual) > parseFloat(max.Beban_Puncak_Aktual) ? d : max
+            );
+            
+            document.getElementById('kpiBeban').textContent = bebanAvg.toFixed(0) + ' MW';
+            document.getElementById('kpiSuhu').textContent = (suhuAvg).toFixed(1) + '°C';
+            document.getElementById('kpiHumidity').textContent = humidityAvg.toFixed(0) + '%';
+            document.getElementById('kpiCorrelation').textContent = 'r = ' + correlation.toFixed(3);
+            
+            const maxDate = maxEntry.Waktu_UTC.split(' ')[0];
+            document.getElementById('kpiMaxDay').textContent = maxDate;
+            document.getElementById('kpiMaxCondition').textContent = 
+                (parseFloat(maxEntry.temp) - 273.15).toFixed(1) + '°C, ' + parseFloat(maxEntry.humidity).toFixed(0) + '% RH';
+        }
+
+        function calculateCorrelation(x, y) {
+            const n = x.length;
+            if (n === 0) return 0;
+            
+            const sum_x = d3.sum(x);
+            const sum_y = d3.sum(y);
+            const sum_xy = d3.sum(x.map((xi, i) => xi * y[i]));
+            const sum_x2 = d3.sum(x.map(xi => xi * xi));
+            const sum_y2 = d3.sum(y.map(yi => yi * yi));
+            
+            const numerator = n * sum_xy - sum_x * sum_y;
+            const denominator = Math.sqrt((n * sum_x2 - sum_x * sum_x) * (n * sum_y2 - sum_y * sum_y));
+            
+            return denominator === 0 ? 0 : numerator / denominator;
+        }
+
+        function updateSummary() {
+            if (filteredData.length === 0) return;
+            
+            const suhuAvg = d3.mean(filteredData, d => parseFloat(kelvinToCelsius(d.temp)));
+            const bebanAvg = d3.mean(filteredData, d => parseFloat(d.Beban_Puncak_Aktual));
+            const correlation = calculateCorrelation(
+                filteredData.map(d => parseFloat(kelvinToCelsius(d.temp))),
+                filteredData.map(d => parseFloat(d.Beban_Puncak_Aktual))
+            );
+            
+            const highTempData = filteredData.filter(d => parseFloat(kelvinToCelsius(d.temp)) > 30);
+            const highTempBeban = highTempData.length > 0 ? d3.mean(highTempData, d => parseFloat(d.Beban_Puncak_Aktual)) : bebanAvg;
+            const increase = ((highTempBeban - bebanAvg) / bebanAvg * 100).toFixed(1);
+            
+            const correlationStr = correlation > 0.7 ? 'kuat' : correlation > 0.3 ? 'sedang' : 'lemah';
+            const trendStr = increase > 0 ? 'naik' : 'turun';
+            
+            const summary = '<strong>"Suhu Ekstrem Dongkrak Beban Puncak hingga ' + Math.abs(increase) + '%"</strong><br>' +
+                'Analisis data menunjukkan korelasi <strong>' + correlationStr + ' (r=' + correlation.toFixed(2) + ')</strong> ' +
+                'antara suhu dan beban puncak. Saat suhu melampaui 30°C, permintaan listrik rata-rata ' + trendStr + ' ' +
+                '<strong>' + Math.abs(highTempBeban - bebanAvg).toFixed(0) + ' MW</strong>, terutama dari sektor AC dan pendinginan.<br>' +
+                '<strong>Temuan Kritis:</strong> Lonjakan beban tertinggi terjadi saat kombinasi suhu puncak + kelembaban tinggi. ' +
+                'Perlu strategi load balancing dan kapasitas cadangan untuk mengantisipasi gelombang panas.';
+            
+            document.getElementById('summaryText').innerHTML = summary;
+        }
+
+        function createStackedAreaChart() {
+            const ctx = document.getElementById('stackedAreaChart');
+            if (!ctx) return;
+            const context = ctx.getContext('2d');
+            
+            let dateStart = document.getElementById('dateStartSA').value;
+            let dateEnd = document.getElementById('dateEndSA').value;
+            console.log(dateStart, dateEnd)
+            
+            let dateStartIdx = stackedData.findIndex(d => {
+                const dDate = new Date(d.Waktu_UTC);
+                return dateStart ? dDate >= new Date(dateStart) : true;
+            });
+            let dateEndIdx = stackedData.findIndex(d => {
+                const dDate = new Date(d.Waktu_UTC);
+                return dateEnd ? dDate > new Date(dateEnd) : false;
+            });
+
+            const grouped = d3.group(stackedData, d => d.Waktu_UTC);
+            const times = Array.from(grouped.keys()).sort().slice(dateStartIdx, dateEndIdx);
+            
+            const sources = Array.from(new Set(stackedData.map(d => d.Sumber_Energi)));
+            const datasets = sources.map(source => {
+                const data = times.map(time => {
+                    const entries = grouped.get(time);
+                    const entry = entries ? entries.find(d => d.Sumber_Energi === source) : null;
+                    return entry ? parseFloat(entry.Kapasitas_Generasi) : 0;
+                });
+                
+                return {
+                    label: source,
+                    data: data,
+                    fill: true,
+                    backgroundColor: getColorForSource(source),
+                    borderWidth: 0
+                };
+            });
+            
+            const bebanData = times.map(time => {
+                const entries = grouped.get(time);
+                const entry = entries ? entries[0] : null;
+                return entry ? parseFloat(entry.Beban_Puncak_Aktual) : null;
+            });
+            
+            datasets.push({
+                label: 'Beban Puncak',
+                data: bebanData,
+                type: 'line',
+                borderColor: '#ef4444',
+                borderWidth: 3,
+                fill: false,
+                pointRadius: 0
+            });
+            
+            if (charts.stacked) charts.stacked.destroy();
+            charts.stacked = new Chart(context, {
+                type: 'line',
+                data: {
+                    labels: times.map(t => t.split(' ')[0]),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    scales: {
+                        x: {
+                            stacked: true
+                        },
+                        y: {
+                            stacked: true,
+                            title: {
+                                display: true,
+                                text: 'Kapasitas (MW)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            mode: 'index'
+                        }
+                    }
+                }
+            });
+        }
+
+        
+
+        function getColorForSource(source) {
+            const colors = {
+                'solar': 'rgba(255, 206, 86, 0.7)',
+                'wind': 'rgba(54, 162, 235, 0.7)',
+                'hydro': 'rgba(75, 192, 192, 0.7)',
+                'fossil': 'rgba(153, 102, 255, 0.7)',
+                'nuclear': 'rgba(255, 99, 132, 0.7)',
+                'biomass': 'rgba(76, 175, 80, 0.7)',
+                'gas': 'rgba(255, 159, 64, 0.7)',
+                'coal': 'rgba(128, 128, 128, 0.7)',
+                'oil': 'rgba(139, 69, 19, 0.7)'
+            };
+            
+            const sourceLower = source.toLowerCase();
+            for (let key in colors) {
+                if (sourceLower.indexOf(key) !== -1) {
+                    return colors[key];
+                }
+            }
+            return 'rgba(201, 203, 207, 0.7)';
+        }
+
+        function createBubbleChart() {
+            if (filteredData.length === 0) return;
+            
+            const sampleData = filteredData.slice(0, 1000);
+            const data = sampleData.map(d => {
+                const hasRain = parseFloat(d.rain_1h || 0) > 0;
+                return {
+                    x: parseFloat(kelvinToCelsius(d.temp)),
+                    y: parseFloat(d.Beban_Puncak_Aktual),
+                    text: 'Kelembaban: ' + parseFloat(d.humidity).toFixed(0) + '%<br>Hujan: ' + parseFloat(d.rain_1h || 0).toFixed(1) + 'mm',
+                    size: Math.sqrt(parseFloat(d.humidity)) * 2,
+                    color: hasRain ? 'rgba(54, 162, 235, 0.6)' : 'rgba(255, 99, 132, 0.6)'
+                };
+            });
+
+            const trace = {
+                x: data.map(d => d.x),
+                y: data.map(d => d.y),
+                text: data.map(d => d.text),
+                mode: 'markers',
+                marker: {
+                    size: data.map(d => d.size),
+                    color: data.map(d => d.color),
+                    line: {
+                        color: 'white',
+                        width: 1
+                    }
+                },
+                type: 'scatter',
+                hovertemplate: 'Suhu: %{x}°C<br>Beban: %{y} MW<br>%{text}<extra></extra>'
+            };
+
+            const layout = {
+                xaxis: { title: 'Suhu (°C)' },
+                yaxis: { title: 'Beban Puncak (MW)' },
+                hovermode: 'closest',
+                showlegend: false
+            };
+
+            Plotly.newPlot('bubbleChart', [trace], layout, {responsive: true});
+        }
+
+        function createTimeSeriesChart() {
+            const ctx = document.getElementById('timeSeriesChart');
+            if (!ctx) return;
+            const context = ctx.getContext('2d');
+            
+            if (filteredData.length === 0) return;
+            
+            const sortedData = filteredData.slice().sort((a, b) => 
+                new Date(a.Waktu_UTC) - new Date(b.Waktu_UTC)
+            ).slice(0, 200);
+            
+            const labels = sortedData.map(d => d.Waktu_UTC.split(' ')[0]);
+            
+            if (charts.timeSeries) charts.timeSeries.destroy();
+            charts.timeSeries = new Chart(context, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Beban Puncak (MW)',
+                            data: sortedData.map(d => parseFloat(d.Beban_Puncak_Aktual)),
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            yAxisID: 'y',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Suhu (°C)',
+                            data: sortedData.map(d => parseFloat(kelvinToCelsius(d.temp))),
+                            borderColor: '#f59e0b',
+                            yAxisID: 'y1',
+                            fill: false,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Kelembaban (%)',
+                            data: sortedData.map(d => parseFloat(d.humidity)),
+                            borderColor: '#10b981',
+                            yAxisID: 'y1',
+                            fill: false,
+                            tension: 0.4,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: { display: true, text: 'Beban (MW)' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: { display: true, text: 'Suhu/Kelembaban' },
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createHeatmap() {
+            const ctx = document.getElementById('heatmapChart');
+            if (!ctx) return;
+            const context = ctx.getContext('2d');
+            
+            if (filteredData.length === 0) return;
+            
+            const tempBins = ['<20°C', '20-25°C', '25-30°C', '>30°C'];
+            const humidityBins = ['<50%', '50-70%', '>70%'];
+            
+            const matrix = tempBins.map(tempBin => {
+                return humidityBins.map(humBin => {
+                    const filtered = filteredData.filter(d => {
+                        const temp = parseFloat(d.temp);
+                        const humidity = parseFloat(d.humidity);
+                        
+                        const tempMatch = 
+                            (tempBin === '<20°C' && temp < 20) ||
+                            (tempBin === '20-25°C' && temp >= 20 && temp < 25) ||
+                            (tempBin === '25-30°C' && temp >= 25 && temp < 30) ||
+                            (tempBin === '>30°C' && temp >= 30);
+                        
+                        const humMatch = 
+                            (humBin === '<50%' && humidity < 50) ||
+                            (humBin === '50-70%' && humidity >= 50 && humidity < 70) ||
+                            (humBin === '>70%' && humidity >= 70);
+                        
+                        return tempMatch && humMatch;
+                    });
+                    
+                    return filtered.length > 0 
+                        ? d3.mean(filtered, d => parseFloat(d.Beban_Puncak_Aktual))
+                        : 0;
+                });
+            });
+            
+            const flatData = matrix.flat();
+            const labels = tempBins.flatMap(temp => 
+                humidityBins.map(hum => temp + ', ' + hum)
+            );
+            
+            if (charts.heatmap) charts.heatmap.destroy();
+            charts.heatmap = new Chart(context, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Rata-rata Beban (MW)',
+                        data: flatData,
+                        backgroundColor: flatData.map(val => {
+                            const max = Math.max.apply(null, flatData);
+                            const intensity = max > 0 ? val / max : 0;
+                            return 'rgba(239, 68, 68, ' + intensity + ')';
+                        })
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        function createCorrelationMatrix() {
+            const ctx = document.getElementById('correlationMatrix');
+            if (!ctx) return;
+            const context = ctx.getContext('2d');
+            
+            if (filteredData.length === 0) return;
+            
+            const variables = ['temp', 'humidity', 'rain_1h', 'pressure', 'Beban_Puncak_Aktual'];
+            const labels = ['Suhu', 'Kelembaban', 'Hujan', 'Tekanan', 'Beban'];
+            
+            const matrix = variables.map(function(var1) {
+                return variables.map(function(var2) {
+                    const x = filteredData.map(function(d) { return parseFloat(d[var1] || 0); });
+                    const y = filteredData.map(function(d) { return parseFloat(d[var2] || 0); });
+                    return calculateCorrelation(x, y);
+                });
+            });
+            
+            const flatData = matrix.flat();
+            const allLabels = labels.flatMap(function(l1) {
+                return labels.map(function(l2) { return l1 + '-' + l2; });
+            });
+            
+            if (charts.correlation) charts.correlation.destroy();
+            charts.correlation = new Chart(context, {
+                type: 'bar',
+                data: {
+                    labels: allLabels,
+                    datasets: [{
+                        label: 'Korelasi',
+                        data: flatData,
+                        backgroundColor: flatData.map(function(val) {
+                            if (val > 0.7) return 'rgba(239, 68, 68, 0.8)';
+                            if (val > 0.3) return 'rgba(251, 146, 60, 0.8)';
+                            if (val > -0.3) return 'rgba(156, 163, 175, 0.8)';
+                            if (val > -0.7) return 'rgba(59, 130, 246, 0.8)';
+                            return 'rgba(37, 99, 235, 0.8)';
+                        })
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return 'r = ' + context.parsed.x.toFixed(3);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            min: -1,
+                            max: 1,
+                            title: {
+                                display: true,
+                                text: 'Koefisien Korelasi'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createRadialChart() {
+            const ctx = document.getElementById('radialChart');
+            if (!ctx) return;
+            const context = ctx.getContext('2d');
+            
+            if (filteredData.length === 0) return;
+            
+            const hourlyData = Array(24).fill(0).map(function() { return []; });
+            
+            filteredData.forEach(function(d) {
+                const date = new Date(d.Waktu_UTC);
+                const hour = date.getHours();
+                if (!isNaN(hour) && hour >= 0 && hour < 24) {
+                    hourlyData[hour].push(parseFloat(d.Beban_Puncak_Aktual));
+                }
+            });
+            
+            const avgByHour = hourlyData.map(function(values) {
+                return values.length > 0 ? d3.mean(values) : 0;
+            });
+            
+            const hours = Array.from({length: 24}, function(_, i) { return i + ':00'; });
+            
+            if (charts.radial) charts.radial.destroy();
+            charts.radial = new Chart(context, {
+                type: 'radar',
+                data: {
+                    labels: hours,
+                    datasets: [{
+                        label: 'Rata-rata Beban Puncak (MW)',
+                        data: avgByHour,
+                        fill: true,
+                        backgroundColor: 'rgba(102, 126, 234, 0.2)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        pointBackgroundColor: 'rgba(102, 126, 234, 1)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(102, 126, 234, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: {
+                                display: true
+                            },
+                            suggestedMin: 0
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+
+        function createCalendarHeatmap() {
+            const container = document.getElementById('calendarHeatmap');
+            container.innerHTML = '';
+            
+            if (filteredData.length === 0) return;
+            
+            const dateMap = d3.rollup(
+                filteredData,
+                function(v) { return d3.mean(v, function(d) { return parseFloat(d.Beban_Puncak_Aktual); }); },
+                function(d) { return d.Waktu_UTC.split(' ')[0]; }
+            );
+            
+            const dates = Array.from(dateMap.keys()).sort();
+            if (dates.length === 0) return;
+            
+            const minDate = new Date(dates[0]);
+            const maxDate = new Date(dates[dates.length - 1]);
+            
+            const values = Array.from(dateMap.values());
+            const minValue = d3.min(values);
+            const maxValue = d3.max(values);
+            
+            const colorScale = d3.scaleSequential(d3.interpolateReds)
+                .domain([minValue, maxValue]);
+            
+            const margin = {top: 40, right: 20, bottom: 20, left: 50};
+            const cellSize = 20;
+            const width = 1110;
+            const height = 250;
+            
+            const svg = d3.select('#calendarHeatmap')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .style('background', 'white');
+            
+            const g = svg.append('g')
+                .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+            
+            const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            g.selectAll('.day-label')
+                .data(dayLabels)
+                .enter()
+                .append('text')
+                .attr('class', 'day-label')
+                .attr('x', -10)
+                .attr('y', function(d, i) { return i * cellSize + cellSize / 2; })
+                .attr('dy', '0.35em')
+                .attr('text-anchor', 'end')
+                .attr('font-size', '10px')
+                .text(function(d) { return d; });
+            
+            const allDates = [];
+            for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
+                allDates.push(new Date(d));
+            }
+            
+            g.selectAll('.day')
+                .data(allDates)
+                .enter()
+                .append('rect')
+                .attr('class', 'day')
+                .attr('width', cellSize - 2)
+                .attr('height', cellSize - 2)
+                .attr('x', function(d) { return d3.timeWeek.count(d3.timeYear(d), d) * cellSize; })
+                .attr('y', function(d) { return d.getDay() * cellSize; })
+                .attr('fill', function(d) {
+                    const dateStr = d.toISOString().split('T')[0];
+                    const value = dateMap.get(dateStr);
+                    return value ? colorScale(value) : '#eee';
+                })
+                .attr('stroke', '#ccc')
+                .attr('stroke-width', 1)
+                .append('title')
+                .text(function(d) {
+                    const dateStr = d.toISOString().split('T')[0];
+                    const value = dateMap.get(dateStr);
+                    return dateStr + '\nBeban: ' + (value ? value.toFixed(0) : 'N/A') + ' MW';
+                });
+            
+            const months = Array.from(new Set(d3.timeMonths(
+                d3.timeMonth.floor(minDate),
+                d3.timeMonth.ceil(maxDate)
+            )));
+            console.log(months)
+            g.selectAll('.month-label')
+                .data(months)
+                .enter()
+                .append('text')
+                .attr('class', 'month-label')
+                .attr('x', function(d) { return d3.timeWeek.count(minDate, d) * cellSize; })
+                .attr('y', -10)
+                .attr('font-size', '12px')
+                .attr('font-weight', 'bold')
+                .text(function(d) { return d3.timeFormat('%b')(d); })
+                // .text("loodoijf")
+
+            
+            const legendWidth = 390;
+            const legendHeight = 30;
+            
+            const legend = svg.append('g')
+                .attr('transform', 'translate(' + (width - legendWidth - margin.right) + ', ' + (height - legendHeight - 20) + ')');
+            
+            const legendScale = d3.scaleLinear()
+                .domain([minValue, maxValue])
+                .range([0, legendWidth]);
+            
+            const legendAxis = d3.axisBottom(legendScale)
+                .ticks(5)
+                .tickFormat(function(d) { return d.toFixed(0) + ' MW'; });
+            
+            const defs = svg.append('defs');
+            const linearGradient = defs.append('linearGradient')
+                .attr('id', 'legend-gradient-filtered');
+            
+            linearGradient.selectAll('stop')
+                .data(d3.range(0, 1.1, 0.1))
+                .enter()
+                .append('stop')
+                .attr('offset', function(d) { return d * 100 + '%'; })
+                .attr('stop-color', function(d) { return colorScale(minValue + d * (maxValue - minValue)); });
+            
+            legend.append('rect')
+                .attr('width', legendWidth)
+                .attr('height', legendHeight)
+                .style('fill', 'url(#legend-gradient-filtered)');
+            
+            legend.append('g')
+                .attr('transform', 'translate(0, ' + legendHeight + ')')
+                .call(legendAxis).attr('y', 30);
+        }
+
+        document.getElementById("dateStartSA").addEventListener("change", function() {
+            createStackedAreaChartFiltered();
+        });
+        document.getElementById("dateEndSA").addEventListener("change", function() {
+            createStackedAreaChartFiltered();
+        });
+        // FILTERED CHART FUNCTIONS
+        function createStackedAreaChartFiltered() {
+            const ctx = document.getElementById('stackedAreaChartFiltered');
+            if (!ctx) return;
+            const context = ctx.getContext('2d');
+            
+            const filteredSet = new Set(filteredData.map(fd => fd.Waktu_UTC));
+            const filteredStackedData = stackedData.filter(d => filteredSet.has(d.Waktu_UTC));
+            
+            let dateStart = document.getElementById('dateStartSA').value;
+            let dateEnd = document.getElementById('dateEndSA').value;
+
+            let dateStartIdx = stackedData.findIndex(d => {
+                const dDate = new Date(d.Waktu_UTC);
+                return dateStart ? dDate >= new Date(dateStart) : true;
+            });
+            let dateEndIdx = stackedData.findIndex(d => {
+                const dDate = new Date(d.Waktu_UTC);
+                return dateEnd ? dDate > new Date(dateEnd) : false;
+            });
+
+            const grouped = d3.group(filteredStackedData, d => d.Waktu_UTC);
+            const times = Array.from(grouped.keys()).sort().slice(dateStartIdx, dateEndIdx);
+            
+            const sources = Array.from(new Set(filteredStackedData.map(d => d.Sumber_Energi)));
+            const datasets = sources.map(source => {
+                const data = times.map(time => {
+                    const entries = grouped.get(time);
+                    const entry = entries ? entries.find(d => d.Sumber_Energi === source) : null;
+                    return entry ? parseFloat(entry.Kapasitas_Generasi) : 0;
+                });
+                
+                return {
+                    label: source,
+                    data: data,
+                    fill: true,
+                    backgroundColor: getColorForSource(source),
+                    borderWidth: 0
+                };
+            });
+            
+            const bebanData = times.map(time => {
+                const entries = grouped.get(time);
+                const entry = entries ? entries[0] : null;
+                return entry ? parseFloat(entry.Beban_Puncak_Aktual) : null;
+            });
+            
+            datasets.push({
+                label: 'Beban Puncak',
+                data: bebanData,
+                type: 'line',
+                borderColor: '#ef4444',
+                borderWidth: 3,
+                fill: false,
+                pointRadius: 0
+            });
+            
+            if (charts.stackedFiltered) charts.stackedFiltered.destroy();
+            charts.stackedFiltered = new Chart(context, {
+                type: 'line',
+                data: {
+                    labels: times.map(t => t.split(' ')[0]),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    scales: {
+                        x: {
+                            stacked: true,
+                            ticks: {
+                                autoSkip: true,
+                                maxRotation: 45,
+                                minRotation: 45
+                            }
+                        },
+                        y: {
+                            stacked: true,
+                            title: {
+                                display: true,
+                                text: 'Kapasitas (MW)'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            mode: 'index'
+                        },
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                boxWidth: 10
+                            }
+                        }
+                    },
+                    resizeDelay: 0
+                }
+            });
+        }
+
+        function createBubbleChartFiltered() {
+            if (filteredData.length === 0) return;
+            
+            const sampleData = filteredData.slice(0, 1000);
+            const data = sampleData.map(d => {
+                const hasRain = parseFloat(d.rain_1h || 0) > 0;
+                return {
+                    x: parseFloat(kelvinToCelsius(d.temp)),
+                    y: parseFloat(d.Beban_Puncak_Aktual),
+                    text: 'Kelembaban: ' + parseFloat(d.humidity).toFixed(0) + '%<br>Hujan: ' + parseFloat(d.rain_1h || 0).toFixed(1) + 'mm',
+                    size: Math.sqrt(parseFloat(d.humidity)) * 2,
+                    color: hasRain ? 'rgba(54, 162, 235, 0.6)' : 'rgba(255, 99, 132, 0.6)'
+                };
+            });
+
+            const trace = {
+                x: data.map(d => d.x),
+                y: data.map(d => d.y),
+                text: data.map(d => d.text),
+                mode: 'markers',
+                marker: {
+                    size: data.map(d => d.size),
+                    color: data.map(d => d.color),
+                    line: {
+                        color: 'white',
+                        width: 1
+                    }
+                },
+                type: 'scatter',
+                hovertemplate: 'Suhu: %{x}°C<br>Beban: %{y} MW<br>%{text}<extra></extra>'
+            };
+
+            const layout = {
+                xaxis: { title: 'Suhu (°C)' },
+                yaxis: { title: 'Beban Puncak (MW)' },
+                hovermode: 'closest',
+                showlegend: false
+            };
+
+            Plotly.newPlot('bubbleChartFiltered', [trace], layout, {responsive: true});
+        }
+
+        function createTimeSeriesChartFiltered() {
+            const ctx = document.getElementById('timeSeriesChartFiltered');
+            if (!ctx) return;
+            const context = ctx.getContext('2d');
+            
+            if (filteredData.length === 0) return;
+            
+            const sortedData = filteredData.slice().sort((a, b) => 
+                new Date(a.Waktu_UTC) - new Date(b.Waktu_UTC)
+            ).slice(0, 200);
+            
+            const labels = sortedData.map(d => d.Waktu_UTC.split(' ')[0]);
+            
+            if (charts.timeSeriesFiltered) charts.timeSeriesFiltered.destroy();
+            charts.timeSeriesFiltered = new Chart(context, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Beban Puncak (MW)',
+                            data: sortedData.map(d => parseFloat(d.Beban_Puncak_Aktual)),
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            yAxisID: 'y',
+                            fill: true,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Suhu (°C)',
+                            data: sortedData.map(d => parseFloat(kelvinToCelsius(d.temp))),
+                            borderColor: '#f59e0b',
+                            yAxisID: 'y1',
+                            fill: false,
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Kelembaban (%)',
+                            data: sortedData.map(d => parseFloat(d.humidity)),
+                            borderColor: '#10b981',
+                            yAxisID: 'y1',
+                            fill: false,
+                            tension: 0.4,
+                            borderDash: [5, 5]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: { display: true, text: 'Beban (MW)' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: { display: true, text: 'Suhu/Kelembaban' },
+                            grid: { drawOnChartArea: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createHeatmapFiltered() {
+            const ctx = document.getElementById('heatmapChartFiltered');
+            if (!ctx) return;
+            const context = ctx.getContext('2d');
+            
+            if (filteredData.length === 0) return;
+            
+            const tempBins = ['<20°C', '20-25°C', '25-30°C', '>30°C'];
+            const humidityBins = ['<50%', '50-70%', '>70%'];
+            
+            const matrix = tempBins.map(tempBin => {
+                return humidityBins.map(humBin => {
+                    const filtered = filteredData.filter(d => {
+                        const temp = parseFloat(kelvinToCelsius(d.temp));
+                        const humidity = parseFloat(d.humidity);
+                        
+                        const tempMatch = 
+                            (tempBin === '<20°C' && temp < 20) ||
+                            (tempBin === '20-25°C' && temp >= 20 && temp < 25) ||
+                            (tempBin === '25-30°C' && temp >= 25 && temp < 30) ||
+                            (tempBin === '>30°C' && temp >= 30);
+                        
+                        const humMatch = 
+                            (humBin === '<50%' && humidity < 50) ||
+                            (humBin === '50-70%' && humidity >= 50 && humidity < 70) ||
+                            (humBin === '>70%' && humidity >= 70);
+                        
+                        return tempMatch && humMatch;
+                    });
+                    
+                    return filtered.length > 0 
+                        ? d3.mean(filtered, d => parseFloat(d.Beban_Puncak_Aktual))
+                        : 0;
+                });
+            });
+            
+            const flatData = matrix.flat();
+            const labels = tempBins.flatMap(temp => 
+                humidityBins.map(hum => temp + ', ' + hum)
+            );
+            
+            if (charts.heatmapFiltered) charts.heatmapFiltered.destroy();
+            charts.heatmapFiltered = new Chart(context, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Rata-rata Beban (MW)',
+                        data: flatData,
+                        backgroundColor: flatData.map(val => {
+                            const max = Math.max.apply(null, flatData);
+                            const intensity = max > 0 ? val / max : 0;
+                            return 'rgba(239, 68, 68, ' + intensity + ')';
+                        })
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        function createCorrelationMatrixFiltered() {
+            const ctx = document.getElementById('correlationMatrixFiltered');
+            if (!ctx) return;
+            const context = ctx.getContext('2d');
+            
+            if (filteredData.length === 0) return;
+            
+            const variables = ['temp', 'humidity', 'rain_1h', 'pressure', 'Beban_Puncak_Aktual'];
+            const labels = ['Suhu', 'Kelembaban', 'Hujan', 'Tekanan', 'Beban'];
+            
+            const matrix = variables.map(function(var1) {
+                return variables.map(function(var2) {
+                    const x = filteredData.map(function(d) { return parseFloat(d[var1] || 0); });
+                    const y = filteredData.map(function(d) { return parseFloat(d[var2] || 0); });
+                    return calculateCorrelation(x, y);
+                });
+            });
+            
+            const flatData = matrix.flat();
+            const allLabels = labels.flatMap(function(l1) {
+                return labels.map(function(l2) { return l1 + '-' + l2; });
+            });
+            
+            if (charts.correlationFiltered) charts.correlationFiltered.destroy();
+            charts.correlationFiltered = new Chart(context, {
+                type: 'bar',
+                data: {
+                    labels: allLabels,
+                    datasets: [{
+                        label: 'Korelasi',
+                        data: flatData,
+                        backgroundColor: flatData.map(function(val) {
+                            if (val > 0.7) return 'rgba(239, 68, 68, 0.8)';
+                            if (val > 0.3) return 'rgba(251, 146, 60, 0.8)';
+                            if (val > -0.3) return 'rgba(156, 163, 175, 0.8)';
+                            if (val > -0.7) return 'rgba(59, 130, 246, 0.8)';
+                            return 'rgba(37, 99, 235, 0.8)';
+                        })
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return 'r = ' + context.parsed.x.toFixed(3);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            min: -1,
+                            max: 1,
+                            title: {
+                                display: true,
+                                text: 'Koefisien Korelasi'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function createRadialChartFiltered() {
+            const ctx = document.getElementById('radialChartFiltered');
+            if (!ctx) return;
+            const context = ctx.getContext('2d');
+            
+            if (filteredData.length === 0) return;
+            
+            const hourlyData = Array(24).fill(0).map(function() { return []; });
+            
+            filteredData.forEach(function(d) {
+                const date = new Date(d.Waktu_UTC);
+                const hour = date.getHours();
+                if (!isNaN(hour) && hour >= 0 && hour < 24) {
+                    hourlyData[hour].push(parseFloat(d.Beban_Puncak_Aktual));
+                }
+            });
+            
+            const avgByHour = hourlyData.map(function(values) {
+                return values.length > 0 ? d3.mean(values) : 0;
+            });
+            
+            const hours = Array.from({length: 24}, function(_, i) { return i + ':00'; });
+            
+            if (charts.radialFiltered) charts.radialFiltered.destroy();
+            charts.radialFiltered = new Chart(context, {
+                type: 'radar',
+                data: {
+                    labels: hours,
+                    datasets: [{
+                        label: 'Rata-rata Beban Puncak (MW)',
+                        data: avgByHour,
+                        fill: true,
+                        backgroundColor: 'rgba(102, 126, 234, 0.2)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        pointBackgroundColor: 'rgba(102, 126, 234, 1)',
+                        pointBorderColor: '#fff',
+                        pointHoverBackgroundColor: '#fff',
+                        pointHoverBorderColor: 'rgba(102, 126, 234, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: {
+                                display: true
+                            },
+                            suggestedMin: 0
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top'
+                        }
+                    }
+                }
+            });
+        }
+
+        function createCalendarHeatmapFiltered() {
+            const container = document.getElementById('calendarHeatmapFiltered');
+            container.innerHTML = '';
+            
+            if (filteredData.length === 0) return;
+            
+            const dateMap = d3.rollup(
+                filteredData,
+                function(v) { return d3.mean(v, function(d) { return parseFloat(d.Beban_Puncak_Aktual); }); },
+                function(d) { return d.Waktu_UTC.split(' ')[0]; }
+            );
+            
+            const dates = Array.from(dateMap.keys()).sort();
+            if (dates.length === 0) return;
+            
+            const minDate = new Date(dates[0]);
+            const maxDate = new Date(dates[dates.length - 1]);
+            
+            const values = Array.from(dateMap.values());
+            const minValue = d3.min(values);
+            const maxValue = d3.max(values);
+            
+            const colorScale = d3.scaleSequential(d3.interpolateReds)
+                .domain([minValue, maxValue]);
+            
+            const margin = {top: 40, right: 20, bottom: 20, left: 50};
+            const cellSize = 20;
+            const width = 1110;
+            const height = 250;
+            
+            const svg = d3.select('#calendarHeatmapFiltered')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .style('background', 'white');
+            
+            const g = svg.append('g')
+                .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')');
+            
+            const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            g.selectAll('.day-label')
+                .data(dayLabels)
+                .enter()
+                .append('text')
+                .attr('class', 'day-label')
+                .attr('x', -10)
+                .attr('y', function(d, i) { return i * cellSize + cellSize / 2; })
+                .attr('dy', '0.35em')
+                .attr('text-anchor', 'end')
+                .attr('font-size', '10px')
+                .text(function(d) { return d; });
+            
+            const allDates = [];
+            for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 1)) {
+                allDates.push(new Date(d));
+            }
+            
+            g.selectAll('.day')
+                .data(allDates)
+                .enter()
+                .append('rect')
+                .attr('class', 'day')
+                .attr('width', cellSize - 2)
+                .attr('height', cellSize - 2)
+                .attr('x', function(d) { return d3.timeWeek.count(d3.timeYear(d), d) * cellSize; })
+                .attr('y', function(d) { return d.getDay() * cellSize; })
+                .attr('fill', function(d) {
+                    const dateStr = d.toISOString().split('T')[0];
+                    const value = dateMap.get(dateStr);
+                    return value ? colorScale(value) : '#eee';
+                })
+                .attr('stroke', '#ccc')
+                .attr('stroke-width', 1)
+                .append('title')
+                .text(function(d) {
+                    const dateStr = d.toISOString().split('T')[0];
+                    const value = dateMap.get(dateStr);
+                    return dateStr + '\nBeban: ' + (value ? value.toFixed(0) : 'N/A') + ' MW';
+                });
+            
+            const months = Array.from(new Set(d3.timeMonths(
+                d3.timeMonth.floor(minDate),
+                d3.timeMonth.ceil(maxDate)
+            )));
+            console.log(months)
+            g.selectAll('.month-label')
+                .data(months)
+                .enter()
+                .append('text')
+                .attr('class', 'month-label')
+                .attr('x', function(d) { return d3.timeWeek.count(minDate, d) * cellSize; })
+                .attr('y', -10)
+                .attr('font-size', '12px')
+                .attr('font-weight', 'bold')
+                .text(function(d) { return d3.timeFormat('%b')(d); })
+                // .text("loodoijf")
+
+            
+            const legendWidth = 390;
+            const legendHeight = 30;
+            
+            const legend = svg.append('g')
+                .attr('transform', 'translate(' + (width - legendWidth - margin.right) + ', ' + (height - legendHeight - 20) + ')');
+            
+            const legendScale = d3.scaleLinear()
+                .domain([minValue, maxValue])
+                .range([0, legendWidth]);
+            
+            const legendAxis = d3.axisBottom(legendScale)
+                .ticks(5)
+                .tickFormat(function(d) { return d.toFixed(0) + ' MW'; });
+            
+            const defs = svg.append('defs');
+            const linearGradient = defs.append('linearGradient')
+                .attr('id', 'legend-gradient-filtered2');
+            
+            linearGradient.selectAll('stop')
+                .data(d3.range(0, 1.1, 0.1))
+                .enter()
+                .append('stop')
+                .attr('offset', function(d) { return d * 100 + '%'; })
+                .attr('stop-color', function(d) { return colorScale(minValue + d * (maxValue - minValue)); });
+            
+            legend.append('rect')
+                .attr('width', legendWidth)
+                .attr('height', legendHeight)
+                .style('fill', 'url(#legend-gradient-filtered2)');
+            
+            legend.append('g')
+                .attr('transform', 'translate(0, ' + legendHeight + ')')
+                .call(legendAxis).attr('y', 30);
+        }
+    </script>
+</body>
+</html>
