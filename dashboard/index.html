@@ -981,7 +981,7 @@
             const correlationStr = correlation > 0.7 ? 'kuat' : correlation > 0.3 ? 'sedang' : 'lemah';
             const trendStr = increase > 0 ? 'naik' : 'turun';
             
-            const summary = '<strong>"Suhu Ekstrem Dongkrak Beban Puncak hingga ' + Math.abs(increase) + '%"</strong><br>' +
+            const summary = '<strong>Suhu Ekstrem Dongkrak Beban Puncak hingga ' + Math.abs(increase) + '%</strong><br>' +
                 'Analisis data menunjukkan korelasi <strong>' + correlationStr + ' (r=' + correlation.toFixed(2) + ')</strong> ' +
                 'antara suhu dan beban puncak. Saat suhu melampaui 30°C, permintaan listrik rata-rata ' + trendStr + ' ' +
                 '<strong>' + Math.abs(highTempBeban - bebanAvg).toFixed(0) + ' MW</strong>, terutama dari sektor AC dan pendinginan.<br>' +
